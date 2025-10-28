@@ -174,9 +174,11 @@ extern "C" void app_main(void) {
     gpio_output_init(DIR2_PIN);
     gpio_output_init(SLEEP_PIN);
     gpio_output_init(EN_PIN);
+    gpio_output_init(HFS_PIN);
 
     gpio_set_level(SLEEP_PIN, 1);
     gpio_set_level(EN_PIN, 1);
+    gpio_set_level(HFS_PIN, 1);
 
     setupMotion();
     vTaskDelay(pdMS_TO_TICKS(1000));
