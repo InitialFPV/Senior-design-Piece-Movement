@@ -1,7 +1,17 @@
 #include "motionPos.h"
-#include <cmath>
 #include "move_queue.h"
+#include <cmath>
 #include <algorithm>
+
+// Implementation of setupMotion moved from header to avoid multiple-definition
+void setupMotion() {
+    gantry.motion_active = false;
+    gantry.position_reached = true;
+    gantry.x = 0;
+    gantry.y = 0;
+    motors.A_pos = 0;
+    motors.B_pos = 0;
+}
 
 
 inline float half_dx_between(int a1, int a2) {

@@ -7,7 +7,7 @@
 #include "driver/ledc.h"
 #include <PinDefs.h>
 #include <cstring>
-#include <motionPos.h>
+#include "motionPos.h"
 #include <cmath>
 #include <esp_log.h>
 #include "move_queue.h"

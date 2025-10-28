@@ -26,14 +26,7 @@ struct {
 //--------------------------------------------
 // Initialization
 //--------------------------------------------
-void setupMotion() {
-    gantry.motion_active = false;
-    gantry.position_reached = true;
-    gantry.x = 0;
-    gantry.y = 0;
-    motors.A_pos = 0;
-    motors.B_pos = 0;
-}
+void setupMotion();
 
 constexpr float board_pos[12][8][2] = {
     {{100.000f, 100.000f}, {100.000f, 137.000f}, {100.000f, 174.000f}, {100.000f, 211.000f}, {100.000f, 248.000f}, {100.000f, 285.000f}, {100.000f, 322.000f}, {100.000f, 359.000f}},
