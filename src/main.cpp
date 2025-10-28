@@ -10,6 +10,7 @@
 #include <motionPos.h>
 #include <cmath>
 #include <esp_log.h>
+#include "move_queue.h"
 
 // AHAHHHHHHHHHH
 static esp_timer_handle_t step_timer = nullptr;
@@ -180,11 +181,28 @@ extern "C" void app_main(void) {
     setupMotion();
     vTaskDelay(pdMS_TO_TICKS(1000));
 
-    moveToXY(50.0f, 10.0f, 40.0f, 0); // arbitrary diagonal, not 45°
+    // Initialize move queue and push some demo commands
+    move_queue_init();
+    MoveCommand mc;
+    mc.x = 50.0f; mc.y = 10.0f; mc.speed = 40.0f; mc.magnet = false;
+    move_queue_push(&mc);
+    mc.x = 20.0f; mc.y = 5.0f; mc.speed = 30.0f; mc.magnet = true;
+    move_queue_push(&mc);
+    mc.x = 0.0f; mc.y = 0.0f; mc.speed = 50.0f; mc.magnet = false;
+    move_queue_push(&mc);
 
     while (true) {
+        // If idle and there are queued moves, dispatch the next one
+        if (gantry.position_reached && !move_queue_is_empty()) {
+            MoveCommand next;
+            if (move_queue_pop(&next)) {
+                ESP_LOGI("MOVE", "Dispatching queued move to (%.2f, %.2f) speed=%.1f magnet=%d", next.x, next.y, next.speed, next.magnet ? 1 : 0);
+                moveToXY(next.x, next.y, next.speed, next.magnet);
+            }
+        }
+
         if (gantry.position_reached) {
-            ESP_LOGI("MOVE", "Move done!");
+            ESP_LOGI("MOVE", "Idle: position reached");
         }
         vTaskDelay(pdMS_TO_TICKS(200));
     }
