@@ -9,4 +9,5 @@
 #define DIR2_PIN GPIO_NUM_48
 #define STEP2_PIN GPIO_NUM_21
 
+#define MAGNET_PIN GPIO_NUM_38
 
