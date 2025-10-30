@@ -175,23 +175,35 @@ extern "C" void app_main(void) {
     gpio_output_init(SLEEP_PIN);
     gpio_output_init(EN_PIN);
     gpio_output_init(HFS_PIN);
-
+    gpio_output_init(MODE0_PIN);
+    gpio_output_init(MODE1_PIN);
+    gpio_output_init(MODE2_PIN);
+    
     gpio_set_level(SLEEP_PIN, 1);
     gpio_set_level(EN_PIN, 1);
     gpio_set_level(HFS_PIN, 1);
-
+    gpio_set_level(MODE0_PIN, 0);
+    gpio_set_level(MODE1_PIN, 0);
+    gpio_set_level(MODE2_PIN, 1);
+    
     setupMotion();
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    ESP_LOGI("INIT", "Startup");
 
     // Initialize move queue and push some demo commands
-    move_queue_init();
-    MoveCommand mc;
-    mc.x = 50.0f; mc.y = 10.0f; mc.speed = 40.0f; mc.magnet = false;
-    move_queue_push(&mc);
-    mc.x = 20.0f; mc.y = 5.0f; mc.speed = 30.0f; mc.magnet = true;
-    move_queue_push(&mc);
-    mc.x = 0.0f; mc.y = 0.0f; mc.speed = 50.0f; mc.magnet = false;
-    move_queue_push(&mc);
+    // move_queue_init();
+    // MoveCommand mc;
+    // mc.x = 200.0f; mc.y = 0.0f; mc.speed = 200.0f; mc.magnet = false;
+    // move_queue_push(&mc);
+    // mc.x = 300.0f; mc.y = 200.0f; mc.speed = 250.0f; mc.magnet = true;
+    // move_queue_push(&mc);
+    // mc.x = 0.0f; mc.y = 0.0f; mc.speed = 200.0f; mc.magnet = false;
+    // move_queue_push(&mc);
+    // ESP_LOGI("INIT", "Pushed moves to queue");
+
+    plan_move(0, 0, 5, 3, true);
+    plan_move(5, 3, 0, 0, false);
+    ESP_LOGI("INIT", "Gantry motion and position status: active=%d reached=%d", gantry.motion_active ? 1 : 0, gantry.position_reached ? 1 : 0);
 
     while (true) {
         // If idle and there are queued moves, dispatch the next one
@@ -200,6 +212,9 @@ extern "C" void app_main(void) {
             if (move_queue_pop(&next)) {
                 ESP_LOGI("MOVE", "Dispatching queued move to (%.2f, %.2f) speed=%.1f magnet=%d", next.x, next.y, next.speed, next.magnet ? 1 : 0);
                 moveToXY(next.x, next.y, next.speed, next.magnet);
+            }
+            else {
+            ESP_LOGI("INIT", "Pop failed unexpectedly");
             }
         }
 
