@@ -27,7 +27,7 @@ typedef struct {
     bool active;
 } move_state_t;
 
-static move_state_t move_ctx = {0};
+static move_state_t move_ctx{};
 
 inline void pulse_step(gpio_num_t pin) {
     gpio_set_level(pin, 1);
@@ -99,9 +99,11 @@ void gpio_output_init(gpio_num_t pin) {
 
 bool moveToXY(float x_target_mm, float y_target_mm, float speed_mm_s, bool magnet_on) {
     
+    
+    gpio_set_level(MAGNET_PIN, magnet_on);
+
     if (speed_mm_s <= 0.0f) return false;
 
-    gpio_set_level(MAGNET_PIN, magnet_on);
 
     float dx = x_target_mm - gantry.x;
     float dy = y_target_mm - gantry.y;
@@ -156,7 +158,11 @@ bool moveToXY(float x_target_mm, float y_target_mm, float speed_mm_s, bool magne
             .callback = &step_timer_cb,
             .arg = NULL,
             .dispatch_method = ESP_TIMER_TASK,
-            .name = "step_timer"
+            .name = "step_timer",
+            /* Ensure all fields are explicitly set to avoid compiler warnings about
+               missing initializers (skip_unhandled_events was added in newer esp-idf
+               versions). */
+            .skip_unhandled_events = false
         };
         esp_timer_create(&args, &step_timer);
     }
@@ -171,6 +177,7 @@ extern "C" void app_main(void) {
     gpio_output_init(STEP1_PIN);
     gpio_output_init(STEP2_PIN);
     gpio_output_init(DIR1_PIN);
+    gpio_output_init(MAGNET_PIN);
     gpio_output_init(DIR2_PIN);
     gpio_output_init(SLEEP_PIN);
     gpio_output_init(EN_PIN);
@@ -202,7 +209,10 @@ extern "C" void app_main(void) {
     // ESP_LOGI("INIT", "Pushed moves to queue");
 
     plan_move(0, 0, 5, 3, true);
-    plan_move(5, 3, 0, 0, false);
+    plan_move(5, 3, 6, 4, true);
+    plan_move(6, 4, 6, 6, true);
+    // plan_move(6, 6, 8, 7, true);
+    plan_move(10, 8, 0, 0, false);
     ESP_LOGI("INIT", "Gantry motion and position status: active=%d reached=%d", gantry.motion_active ? 1 : 0, gantry.position_reached ? 1 : 0);
 
     while (true) {
