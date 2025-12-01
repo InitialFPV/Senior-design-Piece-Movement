@@ -181,6 +181,27 @@ bool moveToXY(float x_target_mm, float y_target_mm, float speed_mm_s, bool magne
     return true;
 }
 
+void moveDispatchTask(void *pvParameters) {
+    while (true) {
+        // If idle and there are queued moves, dispatch the next one
+        if (gantry.position_reached && !move_queue_is_empty()) {
+            MoveCommand next;
+            if (move_queue_pop(&next)) {
+                ESP_LOGI("MOVE", "Dispatching queued move to (%.2f, %.2f) speed=%.1f magnet=%d", next.x, next.y, next.speed, next.magnet ? 1 : 0);
+                moveToXY(next.x, next.y, next.speed, next.magnet);
+            }
+            else {
+                ESP_LOGI("INIT", "Pop failed unexpectedly");
+            }
+        }
+
+        if (gantry.position_reached) {
+            ESP_LOGI("MOVE", "Idle: position reached");
+        }
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+}
+
 volatile bool limit_x_triggered = false;
 volatile bool limit_y_triggered = false;
 
@@ -247,22 +268,7 @@ extern "C" void app_main(void) {
     plan_move(10, 7, 0, 0, false);
     ESP_LOGI("INIT", "Gantry motion and position status: active=%d reached=%d", gantry.motion_active ? 1 : 0, gantry.position_reached ? 1 : 0);
 
-    while (homeOK != -1) {
-        // If idle and there are queued moves, dispatch the next one
-        if (gantry.position_reached && !move_queue_is_empty()) {
-            MoveCommand next;
-            if (move_queue_pop(&next)) {
-                ESP_LOGI("MOVE", "Dispatching queued move to (%.2f, %.2f) speed=%.1f magnet=%d", next.x, next.y, next.speed, next.magnet ? 1 : 0);
-                moveToXY(next.x, next.y, next.speed, next.magnet);
-            }
-            else {
-            ESP_LOGI("INIT", "Pop failed unexpectedly");
-            }
-        }
-
-        if (gantry.position_reached) {
-            ESP_LOGI("MOVE", "Idle: position reached");
-        }
-        vTaskDelay(pdMS_TO_TICKS(200));
+    if (homeOK != -1) {
+        xTaskCreate(moveDispatchTask, "MoveDispatch", 4096, NULL, 5, NULL);
     }
 }
