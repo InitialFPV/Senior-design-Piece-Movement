@@ -96,6 +96,17 @@ void gpio_output_init(gpio_num_t pin) {
     gpio_config(&cfg);
 }
 
+void gpio_input_init(gpio_num_t pin, gpio_int_type_t intr_type) {
+    gpio_config_t cfg = {
+        .pin_bit_mask = (1ULL << pin),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = intr_type
+    };
+    gpio_config(&cfg);
+}
+
 
 bool moveToXY(float x_target_mm, float y_target_mm, float speed_mm_s, bool magnet_on) {
     
@@ -159,9 +170,6 @@ bool moveToXY(float x_target_mm, float y_target_mm, float speed_mm_s, bool magne
             .arg = NULL,
             .dispatch_method = ESP_TIMER_TASK,
             .name = "step_timer",
-            /* Ensure all fields are explicitly set to avoid compiler warnings about
-               missing initializers (skip_unhandled_events was added in newer esp-idf
-               versions). */
             .skip_unhandled_events = false
         };
         esp_timer_create(&args, &step_timer);
@@ -171,6 +179,22 @@ bool moveToXY(float x_target_mm, float y_target_mm, float speed_mm_s, bool magne
 
     ESP_LOGI("MOVE", "Straight move: freq=%.1f Hz, period=%.1f us, A=%lu B=%lu", freq, move_ctx.step_period_us, move_ctx.total_A, move_ctx.total_B);
     return true;
+}
+
+volatile bool limit_x_triggered = false;
+volatile bool limit_y_triggered = false;
+
+static void IRAM_ATTR limit_switch_isr_handler(void* arg) {
+    uint32_t gpio_num = (uint32_t) arg;
+    if (gpio_num == LIMIT_Y_PIN) {
+        limit_y_triggered = true;
+    } else if (gpio_num == LIMIT_X_PIN) {
+        limit_x_triggered = true;
+    }
+    // Stop motors immediately
+    move_ctx.active = false;
+    esp_timer_stop(step_timer);
+    gantry.motion_active = false;
 }
 
 extern "C" void app_main(void) {
@@ -186,6 +210,13 @@ extern "C" void app_main(void) {
     gpio_output_init(MODE1_PIN);
     gpio_output_init(MODE2_PIN);
     
+    gpio_input_init(LIMIT_Y_PIN, GPIO_INTR_NEGEDGE);
+    gpio_input_init(LIMIT_X_PIN, GPIO_INTR_NEGEDGE);
+
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(LIMIT_Y_PIN, limit_switch_isr_handler, (void*) LIMIT_Y_PIN);
+    gpio_isr_handler_add(LIMIT_X_PIN, limit_switch_isr_handler, (void*) LIMIT_X_PIN);
+
     gpio_set_level(SLEEP_PIN, 1);
     gpio_set_level(EN_PIN, 1);
     gpio_set_level(HFS_PIN, 1);
@@ -195,27 +226,28 @@ extern "C" void app_main(void) {
     
     setupMotion();
     vTaskDelay(pdMS_TO_TICKS(2000));
-    ESP_LOGI("INIT", "Startup");
+    ESP_LOGI("INIT", "Startup, beginning homing sequence.");
 
-    // Initialize move queue and push some demo commands
-    // move_queue_init();
-    // MoveCommand mc;
-    // mc.x = 200.0f; mc.y = 0.0f; mc.speed = 200.0f; mc.magnet = false;
-    // move_queue_push(&mc);
-    // mc.x = 300.0f; mc.y = 200.0f; mc.speed = 250.0f; mc.magnet = true;
-    // move_queue_push(&mc);
-    // mc.x = 0.0f; mc.y = 0.0f; mc.speed = 200.0f; mc.magnet = false;
-    // move_queue_push(&mc);
-    // ESP_LOGI("INIT", "Pushed moves to queue");
+    int homeOK = home_gantry();
+    if (homeOK == -1) {
+        ESP_LOGI("INIT", "Homing failed. Halting.");
+        while (1) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+    }
+    else{
+        ESP_LOGI("INIT", "Homing sequence complete.");
+    }
 
+    // movement tests
     plan_move(0, 0, 5, 3, true);
     plan_move(5, 3, 6, 4, true);
     plan_move(6, 4, 6, 6, true);
     // plan_move(6, 6, 8, 7, true);
-    plan_move(10, 8, 0, 0, false);
+    plan_move(10, 7, 0, 0, false);
     ESP_LOGI("INIT", "Gantry motion and position status: active=%d reached=%d", gantry.motion_active ? 1 : 0, gantry.position_reached ? 1 : 0);
 
-    while (true) {
+    while (homeOK != -1) {
         // If idle and there are queued moves, dispatch the next one
         if (gantry.position_reached && !move_queue_is_empty()) {
             MoveCommand next;

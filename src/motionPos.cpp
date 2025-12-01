@@ -2,6 +2,9 @@
 #include "move_queue.h"
 #include <cmath>
 #include <algorithm>
+#include "PinDefs.h"
+#include "driver/gpio.h"
+#include "esp_log.h"
 
 // Define the actual global instances declared as extern in the header
 Gantry_t gantry{};
@@ -115,4 +118,90 @@ void plan_move(int A_from, int B_from, int A_to, int B_to, bool direct) {
     // ---- Step 4: Release magnet
     mc = {toX, toY, 0.0f, false};
     move_queue_push(&mc);
+}
+
+int home_gantry() {
+    const float homing_speed = 20.0f; // mm/s
+    const float backoff_dist = 20.0f; // mm
+
+    // Temporarily disable interrupts on limit switches to check their state
+    gpio_intr_disable(LIMIT_Y_PIN);
+    gpio_intr_disable(LIMIT_X_PIN);
+
+    // If a limit switch is already pressed, back off a bit
+    if (gpio_get_level(LIMIT_Y_PIN) == 0) {
+        ESP_LOGI("HOME", "Y limit switch is already pressed. Backing off.");
+        // move +20mm in Y
+        moveToXY(gantry.x, gantry.y + backoff_dist, homing_speed, false);
+        while(gantry.position_reached == false) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+
+    }
+    if (gpio_get_level(LIMIT_X_PIN) == 0) {
+        ESP_LOGI("HOME", "X limit switch is already pressed. Backing off.");
+        // move +20mm in X
+        moveToXY(gantry.x + backoff_dist, gantry.y, homing_speed, false);
+        while(gantry.position_reached == false) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+
+    }
+
+    if (gpio_get_level(LIMIT_Y_PIN) == 0 || gpio_get_level(LIMIT_X_PIN) == 0) {
+        ESP_LOGI("HOME", "Failed to back off from limit switches. Homing aborted.");
+        // Re-enable interrupts before exiting
+        gpio_intr_enable(LIMIT_Y_PIN);
+        gpio_intr_enable(LIMIT_X_PIN);
+        return -1; // Indicate failure
+    }
+
+    // Re-enable interrupts
+    gpio_intr_enable(LIMIT_Y_PIN);
+    gpio_intr_enable(LIMIT_X_PIN);
+
+    // --- Home Y axis ---
+    ESP_LOGI("HOME", "Homing Y axis...");
+    limit_y_triggered = false;
+    
+    // Start moving
+    moveToXY(gantry.x, -2000, homing_speed, false); // Move towards negative A and B
+    int homeStartTime = esp_log_timestamp();
+    while(!limit_y_triggered) {
+        if (esp_log_timestamp() - homeStartTime > 10000) { // 10 second timeout
+            ESP_LOGI("HOME", "Homing Y axis timed out. Aborting.");
+            return -1;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    ESP_LOGI("HOME", "Y axis homed.");
+    vTaskDelay(pdMS_TO_TICKS(100)); // Settle
+
+    // --- Home X axis ---
+    ESP_LOGI("HOME", "Homing X axis...");
+    limit_x_triggered = false;
+    // To move towards X=0, both A and B decrease.
+    gpio_set_level(DIR1_PIN, 0); // A negative
+    gpio_set_level(DIR2_PIN, 0); // B negative
+
+    // Start moving
+    moveToXY(-2000, gantry.y, homing_speed, false); // Move towards negative A and B
+    
+    while(!limit_x_triggered) {
+        if (esp_log_timestamp() - homeStartTime > 10000) { // 10 second timeout
+            ESP_LOGI("HOME", "Homing X axis timed out. Aborting.");
+            return -1;
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    ESP_LOGI("HOME", "X axis homed.");
+    vTaskDelay(pdMS_TO_TICKS(100)); // Settle
+
+    // --- Set zero position ---
+    ESP_LOGI("HOME", "Homing complete. Setting zero position.");
+    gantry.x = 0;
+    gantry.y = 0;
+    motors.A_pos = 0;
+    motors.B_pos = 0;
+    return 1;
 }

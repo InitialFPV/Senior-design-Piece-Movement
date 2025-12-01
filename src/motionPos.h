@@ -32,8 +32,14 @@ extern Motors_t motors;
 // Initialization
 //--------------------------------------------
 void setupMotion();
-
 void plan_move(int A_from, int B_from, int A_to, int B_to, bool direct);
+int home_gantry();
+
+// Declare moveToXY so it can be used in motionPos.cpp
+bool moveToXY(float x_target_mm, float y_target_mm, float speed_mm_s, bool magnet_on);
+
+extern volatile bool limit_y_triggered;
+extern volatile bool limit_x_triggered;
 
 constexpr float board_pos[12][8][2] = {
     {{0.000f, 0.000f}, {0.000f, 37.000f}, {0.000f, 74.000f}, {0.000f, 111.000f}, {0.000f, 148.000f}, {0.000f, 185.000f}, {0.000f, 222.000f}, {0.000f, 259.000f}},
