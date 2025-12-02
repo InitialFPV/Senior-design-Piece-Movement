@@ -5,6 +5,9 @@
 #include "PinDefs.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "step_timer.h"
 
 // Define the actual global instances declared as extern in the header
 Gantry_t gantry{};
@@ -138,14 +141,11 @@ int home_gantry() {
         }
 
     }
-    if (gpio_get_level(LIMIT_X_PIN) == 0) {
-        ESP_LOGI("HOME", "X limit switch is already pressed. Backing off.");
-        // move +20mm in X
-        moveToXY(gantry.x + backoff_dist, gantry.y, homing_speed, false);
-        while(gantry.position_reached == false) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
 
+    // back off X every time
+    moveToXY(gantry.x + backoff_dist, gantry.y, homing_speed, false);
+    while(gantry.position_reached == false) {
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     if (gpio_get_level(LIMIT_Y_PIN) == 0 || gpio_get_level(LIMIT_X_PIN) == 0) {
@@ -168,8 +168,9 @@ int home_gantry() {
     moveToXY(gantry.x, -2000, homing_speed, false); // Move towards negative A and B
     int homeStartTime = esp_log_timestamp();
     while(!limit_y_triggered) {
-        if (esp_log_timestamp() - homeStartTime > 10000) { // 10 second timeout
+        if (esp_log_timestamp() - homeStartTime > 40000) { // 40 second timeout
             ESP_LOGI("HOME", "Homing Y axis timed out. Aborting.");
+            esp_timer_stop(step_timer);
             return -1;
         }
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -180,16 +181,14 @@ int home_gantry() {
     // --- Home X axis ---
     ESP_LOGI("HOME", "Homing X axis...");
     limit_x_triggered = false;
-    // To move towards X=0, both A and B decrease.
-    gpio_set_level(DIR1_PIN, 0); // A negative
-    gpio_set_level(DIR2_PIN, 0); // B negative
 
     // Start moving
     moveToXY(-2000, gantry.y, homing_speed, false); // Move towards negative A and B
     
     while(!limit_x_triggered) {
-        if (esp_log_timestamp() - homeStartTime > 10000) { // 10 second timeout
+        if (esp_log_timestamp() - homeStartTime > 40000) { // 40 second timeout
             ESP_LOGI("HOME", "Homing X axis timed out. Aborting.");
+            esp_timer_stop(step_timer);
             return -1;
         }
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -203,5 +202,11 @@ int home_gantry() {
     gantry.y = 0;
     motors.A_pos = 0;
     motors.B_pos = 0;
+    gantry.position_reached = true;
+    gantry.motion_active = false;   
+    
+    gpio_intr_disable(LIMIT_Y_PIN);
+    gpio_intr_disable(LIMIT_X_PIN);
+    
     return 1;
 }

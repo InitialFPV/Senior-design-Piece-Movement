@@ -11,10 +11,11 @@
 #include <cmath>
 #include <esp_log.h>
 #include "move_queue.h"
+#include "step_timer.h"
+
+esp_timer_handle_t step_timer = nullptr;
 
 // AHAHHHHHHHHHH
-static esp_timer_handle_t step_timer = nullptr;
-
 typedef struct {
     uint32_t total_A, total_B;
     uint32_t sent_A, sent_B;
@@ -182,7 +183,9 @@ bool moveToXY(float x_target_mm, float y_target_mm, float speed_mm_s, bool magne
 }
 
 void moveDispatchTask(void *pvParameters) {
+    ESP_LOGI("INIT", "Move dispatch task running.");
     while (true) {
+        ESP_LOGI("LOOP", "WHILE entered");
         // If idle and there are queued moves, dispatch the next one
         if (gantry.position_reached && !move_queue_is_empty()) {
             MoveCommand next;
@@ -269,6 +272,9 @@ extern "C" void app_main(void) {
     ESP_LOGI("INIT", "Gantry motion and position status: active=%d reached=%d", gantry.motion_active ? 1 : 0, gantry.position_reached ? 1 : 0);
 
     if (homeOK != -1) {
-        xTaskCreate(moveDispatchTask, "MoveDispatch", 4096, NULL, 5, NULL);
+        xTaskCreate(moveDispatchTask, "MoveDispatch", 8192, NULL, 10, NULL);
+    }
+    while(1) {
+        vTaskDelay(pdMS_TO_TICKS(10000));
     }
 }
